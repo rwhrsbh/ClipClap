@@ -220,15 +220,15 @@ struct SettingsView: View {
             
             Toggle("Launch at login", isOn: $autoLaunchEnabled)
                 .padding()
-                .onChange(of: autoLaunchEnabled) { 
-                    clipboardManager.toggleAutoLaunch(enabled: $0)
+                .onChange(of: autoLaunchEnabled) { oldValue, newValue in 
+                    clipboardManager.toggleAutoLaunch(enabled: newValue)
                 }
                 
             Toggle("Show startup screen", isOn: $showStartupScreen)
                 .padding()
-                .onChange(of: showStartupScreen) { 
+                .onChange(of: showStartupScreen) { oldValue, newValue in 
                     // Для наочності - при зміні опції відразу показуємо ефект
-                    print("Changed showStartupScreen to: \($0)")
+                    print("Changed showStartupScreen to: \(newValue)")
                 }
             
             Spacer()
