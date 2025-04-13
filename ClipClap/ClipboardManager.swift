@@ -275,33 +275,26 @@ final class ClipboardManager: ObservableObject {
                     return
                 }
                 
-                // Використовуємо кілька методів для забезпечення сумісності
+                // Використовуємо основний метод для вставки файлів
+                let nsUrls = existingFiles as [NSURL]
+                let success = pasteboard.writeObjects(nsUrls)
                 
-                // 1. Основний метод для файлів
-                let success1 = pasteboard.writeObjects(existingFiles as [NSURL])
-                
-                // 2. Альтернативний метод - встановлюємо як URL
-                var success2 = false
-                if existingFiles.count == 1, let urlData = try? NSKeyedArchiver.archivedData(withRootObject: existingFiles[0] as NSURL, requiringSecureCoding: false) {
-                    pasteboard.setData(urlData, forType: .URL)
-                    success2 = true
+                // Якщо основний метод не спрацював, використовуємо резервні методи
+                if !success {
+                    // Спробуємо встановити FileURL тип
+                    if let fileURLsData = try? NSKeyedArchiver.archivedData(withRootObject: existingFiles as NSArray, requiringSecureCoding: false) {
+                        pasteboard.setData(fileURLsData, forType: .fileURL)
+                    }
+                    
+                    // Для одного файлу можемо спробувати URL тип
+                    if existingFiles.count == 1, let urlData = try? NSKeyedArchiver.archivedData(withRootObject: existingFiles[0] as NSURL, requiringSecureCoding: false) {
+                        pasteboard.setData(urlData, forType: .URL)
+                    }
                 }
                 
-                // 3. Встановлюємо fileURLs як спеціальний тип
-                var success3 = false
-                if let fileURLsData = try? NSKeyedArchiver.archivedData(withRootObject: existingFiles as NSArray, requiringSecureCoding: false) {
-                    pasteboard.setData(fileURLsData, forType: .fileURL)
-                    success3 = true
-                }
-                
-                // Додатково додаємо як текстові шляхи для сумісності
-                let paths = existingFiles.map { $0.path }.joined(separator: "\n")
-                pasteboard.setString(paths, forType: .string)
-                
-                log("File insertion attempts: Primary=\(success1), URL=\(success2), FileURL=\(success3)")
                 log("Inserted \(existingFiles.count) files")
                 
-                // Згенеруємо увесь вміст буфера для діагностики
+                // Логуємо підсумок для діагностики
                 if let types = pasteboard.types {
                     log("Resulting clipboard types: \(types.map { $0.rawValue }.joined(separator: ", "))")
                 }
