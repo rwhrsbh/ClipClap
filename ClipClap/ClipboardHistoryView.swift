@@ -41,7 +41,7 @@ struct ClipboardHistoryView: View {
             // Information about operation
             HStack {
                 Image(systemName: "info.circle")
-                Text("Натисніть на елемент, щоб скопіювати. Файли копіюються як реальні файли, а не лише імена.")
+                Text("Click on an item to copy")
                     .font(.caption)
                 Spacer()
             }
