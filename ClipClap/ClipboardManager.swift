@@ -55,6 +55,9 @@ final class ClipboardManager: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: "ClipClap_PermissionsGranted") }
     }
     
+    /// Зберігає меню для правого кліку
+    private var statusItemMenu: NSMenu?
+    
     // MARK: - Initialization
     
     init() {
@@ -215,7 +218,7 @@ final class ClipboardManager: ObservableObject {
                 // Показуємо успішне повідомлення
                 let successAlert = NSAlert()
                 successAlert.messageText = "Permissions granted!"
-                successAlert.informativeText = "Cmd+Shift+V hotkeys are now active."
+                successAlert.informativeText = "Option+Command+V hotkeys are now active."
                 successAlert.addButton(withTitle: "OK")
                 successAlert.runModal()
                 
@@ -228,7 +231,7 @@ final class ClipboardManager: ObservableObject {
     /// Вставляє елемент з історії за індексом
     func pasteItemAtIndex(_ index: Int) {
         guard index >= 0 && index < clipboardHistory.count else {
-            log("Errorninserting: invalideindexdex)")
+            log("Error inserting: invalid index")
             return
         }
         
@@ -241,21 +244,69 @@ final class ClipboardManager: ObservableObject {
         case .text:
             if let text = item.textValue {
                 pasteboard.setString(text, forType: .string)
-                log("Insertedttext\(text.prefix(20))...")
+                log("Inserted text: \(text.prefix(20))...")
             }
             
         case .image:
             if let image = item.imageValue {
                 if let tiffData = image.tiffRepresentation {
                     pasteboard.setData(tiffData, forType: .tiff)
+                    
+                    // Додатково встановлюємо формат PNG для кращої сумісності
+                    if let bitmapRep = NSBitmapImageRep(data: tiffData),
+                       let pngData = bitmapRep.representation(using: .png, properties: [:]) {
+                        pasteboard.setData(pngData, forType: .png)
+                    }
+                    
                     log("Inserted image")
                 }
             }
             
         case .file:
-            if let urls = item.fileURLs {
-                pasteboard.writeObjects(urls as [NSURL])
-                log("Inserted file(s): \(urls.count) items")
+            if let urls = item.fileURLs, !urls.isEmpty {
+                // Перевірка, чи існують файли перед вставкою
+                let existingFiles = urls.filter { FileManager.default.fileExists(atPath: $0.path) }
+                
+                if existingFiles.isEmpty {
+                    log("Error: None of the files exist at their paths")
+                    // Як запасний варіант, просто вставляємо шляхи як текст
+                    let paths = urls.map { $0.path }.joined(separator: "\n")
+                    pasteboard.setString(paths, forType: .string)
+                    return
+                }
+                
+                // Використовуємо кілька методів для забезпечення сумісності
+                
+                // 1. Основний метод для файлів
+                let success1 = pasteboard.writeObjects(existingFiles as [NSURL])
+                
+                // 2. Альтернативний метод - встановлюємо як URL
+                var success2 = false
+                if existingFiles.count == 1, let urlData = try? NSKeyedArchiver.archivedData(withRootObject: existingFiles[0] as NSURL, requiringSecureCoding: false) {
+                    pasteboard.setData(urlData, forType: .URL)
+                    success2 = true
+                }
+                
+                // 3. Встановлюємо fileURLs як спеціальний тип
+                var success3 = false
+                if let fileURLsData = try? NSKeyedArchiver.archivedData(withRootObject: existingFiles as NSArray, requiringSecureCoding: false) {
+                    pasteboard.setData(fileURLsData, forType: .fileURL)
+                    success3 = true
+                }
+                
+                // Додатково додаємо як текстові шляхи для сумісності
+                let paths = existingFiles.map { $0.path }.joined(separator: "\n")
+                pasteboard.setString(paths, forType: .string)
+                
+                log("File insertion attempts: Primary=\(success1), URL=\(success2), FileURL=\(success3)")
+                log("Inserted \(existingFiles.count) files")
+                
+                // Згенеруємо увесь вміст буфера для діагностики
+                if let types = pasteboard.types {
+                    log("Resulting clipboard types: \(types.map { $0.rawValue }.joined(separator: ", "))")
+                }
+            } else {
+                log("Error: No valid files to insert")
             }
             
         case .unknown:
@@ -341,12 +392,7 @@ final class ClipboardManager: ObservableObject {
             button.title = "📋"
         }
         
-        // Встановлюємо дію для лівого кліку
-        button.target = self
-        button.action = #selector(statusItemClicked(_:))
-        button.sendAction(on: [.leftMouseUp])
-        
-        // Створюємо елементи меню для правого кліку
+        // Створюємо меню для правого кліку
         let menu = NSMenu()
         
         // Пункт історії буфера обміну
@@ -387,8 +433,15 @@ final class ClipboardManager: ObservableObject {
         quitItem.target = self
         menu.addItem(quitItem)
         
-        // Встановлюємо меню для правого кліку
-        statusItem?.menu = menu
+        // Налаштовуємо обробник кліків
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        
+        // Обробник кліків для різних типів кнопок миші
+        button.action = #selector(handleStatusItemClick(_:))
+        button.target = self
+        
+        // Зберігаємо меню для використання при правому кліку
+        self.statusItemMenu = menu
     }
     
     /// Налаштовує попап для відображення історії
@@ -413,8 +466,15 @@ final class ClipboardManager: ObservableObject {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             
-            // Реєструємо стандартні типи даних
-            pasteboard.declareTypes([.string, .rtf, .rtfd, .tiff, .png, .pdf, .fileURL], owner: nil)
+            // Максимальний набір типів для підтримки
+            let pasteboardTypes: [NSPasteboard.PasteboardType] = [
+                .string, .rtf, .rtfd, .tiff, .png, .pdf, .fileURL, .URL,
+                NSPasteboard.PasteboardType("public.file-url"),
+                NSPasteboard.PasteboardType("com.apple.finder.file")
+            ]
+            
+            // Реєструємо типи даних
+            pasteboard.declareTypes(pasteboardTypes, owner: nil)
             
             // Запам'ятовуємо початковий стан лічильника змін
             lastChangeCount = pasteboard.changeCount
@@ -446,26 +506,56 @@ final class ClipboardManager: ObservableObject {
         // Оновлюємо лічильник змін
         lastChangeCount = currentChangeCount
         
-        // Спроба отримати текст
-        if let clipboardString = pasteboard.string(forType: .string) {
-            // Перевіряємо, чи це не пустий текст
-            if !clipboardString.isEmpty {
-                addNewItem(ClipboardItem(text: clipboardString))
-                return
+        // Логуємо доступні типи даних для діагностики
+        let availableTypes = pasteboard.types ?? []
+        log("Clipboard types: \(availableTypes.map { $0.rawValue }.joined(separator: ", "))")
+        
+        // Спочатку перевіряємо, чи є файли в буфері обміну
+        // Спроба отримати файли (з вищим пріоритетом)
+        if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !fileURLs.isEmpty {
+            log("Detected files in clipboard: \(fileURLs.count) files")
+            // Виводимо шляхи для діагностики
+            for (index, url) in fileURLs.enumerated() {
+                log("File \(index): \(url.path) (exists: \(FileManager.default.fileExists(atPath: url.path)))")
             }
+            addNewItem(ClipboardItem(fileURLs: fileURLs))
+            return
         }
         
-        // Спроба отримати зображення
-        if let tiffData = pasteboard.data(forType: .tiff),
-           let image = NSImage(data: tiffData) {
+        // Перевіряємо формати зображень у правильному порядку
+        // Спочатку перевіряємо PNG як найкращий формат для якості
+        if pasteboard.canReadObject(forClasses: [NSImage.self], options: nil),
+           let images = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+           let image = images.first {
+            log("Detected image in clipboard (NSImage)")
             addNewItem(ClipboardItem(image: image))
             return
         }
         
-        // Спроба отримати файли
-        if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !fileURLs.isEmpty {
-            addNewItem(ClipboardItem(fileURLs: fileURLs))
+        // Якщо не вдалося як NSImage, спробуємо конкретні типи
+        if let pngData = pasteboard.data(forType: .png), 
+           let image = NSImage(data: pngData) {
+            log("Detected PNG image in clipboard")
+            addNewItem(ClipboardItem(image: image))
             return
+        }
+        
+        // Перевіряємо TIFF формат
+        if let tiffData = pasteboard.data(forType: .tiff),
+           let image = NSImage(data: tiffData) {
+            log("Detected TIFF image in clipboard")
+            addNewItem(ClipboardItem(image: image))
+            return
+        }
+        
+        // Спроба отримати текст (найнижчий пріоритет)
+        if let clipboardString = pasteboard.string(forType: .string) {
+            // Перевіряємо, чи це не пустий текст
+            if !clipboardString.isEmpty {
+                log("Detected text in clipboard")
+                addNewItem(ClipboardItem(text: clipboardString))
+                return
+            }
         }
         
         log("Received clipboard change, but failed to recognize data type")
@@ -536,8 +626,8 @@ final class ClipboardManager: ObservableObject {
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self = self else { return event }
                 
-                // Перевіряємо Cmd+Shift+V
-                if event.modifierFlags.contains([.command, .shift]) && 
+                // Перевіряємо Option+Command+V
+                if event.modifierFlags.contains([.command, .option]) && 
                    event.keyCode == 9 /* V */ {
                     DispatchQueue.main.async {
                         self.showPopover()
@@ -551,8 +641,8 @@ final class ClipboardManager: ObservableObject {
             NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self = self else { return }
                 
-                // Перевіряємо Cmd+Shift+V
-                if event.modifierFlags.contains([.command, .shift]) && 
+                // Перевіряємо Option+Command+V
+                if event.modifierFlags.contains([.command, .option]) && 
                    event.keyCode == 9 /* V */ {
                     DispatchQueue.main.async {
                         self.showPopover()
@@ -566,8 +656,8 @@ final class ClipboardManager: ObservableObject {
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self = self else { return event }
                 
-                // Перевіряємо Cmd+Shift+V
-                if event.modifierFlags.contains([.command, .shift]) && 
+                // Перевіряємо Option+Command+V
+                if event.modifierFlags.contains([.command, .option]) && 
                    event.keyCode == 9 /* V */ {
                     DispatchQueue.main.async {
                         self.showPopover()
@@ -580,7 +670,7 @@ final class ClipboardManager: ObservableObject {
             // Також реєструємо гарячу клавішу в меню
             if let menu = statusItem?.menu {
                 let item = NSMenuItem(title: "Show Clipboard History", action: #selector(togglePopover(_:)), keyEquivalent: "v")
-                item.keyEquivalentModifierMask = [.command, .shift]
+                item.keyEquivalentModifierMask = [.command, .option]
                 menu.insertItem(item, at: 0)
             }
         }
@@ -755,10 +845,19 @@ final class ClipboardManager: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
     }
     
-    /// Обробляє клік на іконці в треї - викликається при ЛКМ
-    @objc private func statusItemClicked(_ sender: Any?) {
-        // Показуємо історію буфера обміну при кліку
-        showPopover()
+    /// Обробляє клік на іконці в треї, розрізняючи лівий і правий кліки
+    @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        let event = NSApp.currentEvent
+        
+        if event?.type == .rightMouseUp {
+            // Правий клік - показуємо меню
+            if let menu = statusItemMenu, let event = event {
+                NSMenu.popUpContextMenu(menu, with: event, for: sender)
+            }
+        } else {
+            // Лівий клік - показуємо історію
+            showPopover()
+        }
     }
     
     /// Обробляє натискання на іконку в панелі меню

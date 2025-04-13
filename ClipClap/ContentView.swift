@@ -36,7 +36,7 @@ struct ContentView: View {
                 if AXIsProcessTrusted() {
                     HStack {
                         Image(systemName: "command")
-                        Image(systemName: "shift")
+                        Image(systemName: "option")
                         Text("V")
                         Text("—")
                         Text("Show clipboard history")
@@ -220,15 +220,15 @@ struct SettingsView: View {
             
             Toggle("Launch at login", isOn: $autoLaunchEnabled)
                 .padding()
-                .onChange(of: autoLaunchEnabled) { newValue in
-                    clipboardManager.toggleAutoLaunch(enabled: newValue)
+                .onChange(of: autoLaunchEnabled) { 
+                    clipboardManager.toggleAutoLaunch(enabled: $0)
                 }
                 
             Toggle("Show startup screen", isOn: $showStartupScreen)
                 .padding()
-                .onChange(of: showStartupScreen) { newValue in
+                .onChange(of: showStartupScreen) { 
                     // Для наочності - при зміні опції відразу показуємо ефект
-                    print("Changed showStartupScreen to: \(newValue)")
+                    print("Changed showStartupScreen to: \($0)")
                 }
             
             Spacer()

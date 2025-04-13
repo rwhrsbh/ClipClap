@@ -41,7 +41,7 @@ struct ClipboardHistoryView: View {
             // Information about operation
             HStack {
                 Image(systemName: "info.circle")
-                Text("Click on an item to copy")
+                Text("Натисніть на елемент, щоб скопіювати. Файли копіюються як реальні файли, а не лише імена.")
                     .font(.caption)
                 Spacer()
             }
@@ -75,7 +75,7 @@ struct ClipboardItemView: View {
                         .frame(maxHeight: 60)
                 } else if item.type == .file, let urls = item.fileURLs {
                     VStack(alignment: .leading) {
-                        Text(urls.first?.lastPathComponent ?? "File")
+                        Text(urls.first?.path ?? "File")
                             .lineLimit(1)
                         if urls.count > 1 {
                             Text("and \(urls.count - 1) more file(s)")

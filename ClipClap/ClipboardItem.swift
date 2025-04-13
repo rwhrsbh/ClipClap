@@ -27,8 +27,8 @@ class ClipboardItem: Identifiable {
         case .file:
             if let urls = fileURLs, let firstURL = urls.first {
                 return urls.count > 1 
-                    ? "\(firstURL.lastPathComponent) and \(urls.count - 1) more file(s)" 
-                    : firstURL.lastPathComponent
+                    ? "\(firstURL.path) and \(urls.count - 1) more file(s)" 
+                    : firstURL.path
             }
             return "File"
         case .unknown:
@@ -59,8 +59,17 @@ class ClipboardItem: Identifiable {
         self.type = .file
         self.textValue = nil
         self.imageValue = nil
-        self.fileURLs = fileURLs
+        
+        // Перевіряємо, чи існують файли за вказаними URL
+        let validURLs = fileURLs.filter { FileManager.default.fileExists(atPath: $0.path) }
+        self.fileURLs = validURLs
+        
         self.timestamp = Date()
+        
+        // Логування
+        if validURLs.count < fileURLs.count {
+            print("Warning: Some file URLs are invalid. Original: \(fileURLs.count), Valid: \(validURLs.count)")
+        }
     }
     
     /// Initializer for unknown type
