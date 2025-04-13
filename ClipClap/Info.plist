@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>ClipClap</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>runService</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSPortName</key>
+			<string>ClipClap</string>
+		</dict>
+	</array>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>ClipClap потребує доступу до функцій доступності для роботи гарячих клавіш Cmd+Shift+V для виклику історії буфера обміну.</string>
+	<key>NSInputMonitoringUsageDescription</key>
+	<string>ClipClap потребує доступ до моніторингу введення для відстеження гарячих клавіш та роботи з буфером обміну</string>
+	<key>Privacy - Accessibility Usage Description</key>
+	<string>Додаток потребує дозвіл для моніторингу клавіатури та доступу до буфера обміну</string>
+	<key>LSBackgroundOnly</key>
+	<false/>
+	<key>NSPasteboardUsageDescription</key>
+	<string>Додаток потребує доступ до буфера обміну для збереження історії</string>
+	<key>NSSystemAdministrationUsageDescription</key>
+	<string>Додаток потребує доступ до системи для деяких операцій з буфером обміну</string>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>ClipClap використовує доступність для обробки системних гарячих клавіш Cmd+Shift+V. Без цього дозволу додаток працюватиме, але гарячі клавіші будуть недоступні.</string>
+</dict>
+</plist>
